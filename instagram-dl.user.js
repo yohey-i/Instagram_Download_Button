@@ -9,7 +9,7 @@
 // @name:hi             इंस्टाग्राम डाउनलोडर
 // @name:ru             Загрузчик Instagram
 // @namespace           https://github.com/y252328/Instagram_Download_Button
-// @version             1.17.21
+// @version             1.17.21a
 // @compatible          chrome
 // @description         Add the download button and the open button to download or open profile picture and media in the posts, stories, and highlights in Instagram
 // @description:zh-TW   在Instagram頁面加入下載按鈕與開啟按鈕，透過這些按鈕可以下載或開啟大頭貼與貼文、限時動態、Highlight中的照片或影片
@@ -23,7 +23,7 @@
 // @author              ZhiYu
 // @match               https://www.instagram.com/*
 // @icon                https://www.google.com/s2/favicons?sz=64&domain=instagram.com
-// @grant               none
+// @grant GM_setClipboard
 // @license             MIT
 // ==/UserScript==
 
@@ -36,6 +36,9 @@
     // =================
     // =    Options    =
     // =================
+    const enableNewtabBtn = true
+    const enableDownloadBtn = true
+    const enableClipURLBtn = true
     // Old method is faster than new method, but not work or unable get highest resolution media sometime
     const disableNewUrlFetchMethod = false;
     const prefetchAndAttachLink = false; // prefetch and add link into the button elements
@@ -47,7 +50,7 @@
     // %medianame% : the original media file name
     // %postId% : the post id
     // %mediaIndex% : the media index in multiple-media posts
-    const postFilenameTemplate = '%id%-%datetime%-%medianame%';
+    const postFilenameTemplate = '%datetime%-%id%-%postId%-%mediaIndex%';
     const storyFilenameTemplate = postFilenameTemplate;
     // === Datetime placeholders ===
     // %y%: year (4 digits)
@@ -56,7 +59,7 @@
     // %H%: hour (00-23)
     // %M%: min (00-59)
     // %S%: sec (00-59)
-    const datetimeTemplate = '%y%%m%%d%_%H%%M%%S%';
+    const datetimeTemplate = '%y%%m%%d%%H%%M%%S%';
     // ==================
 
     const postIdPattern = /^\/p\/([^/]+)\//;
@@ -79,6 +82,16 @@
 
     var svgNewtabBtn = `<svg id="Capa_1" style="fill:%color;" viewBox="0 0 482.239 482.239" xmlns="http://www.w3.org/2000/svg" height="24" width="24">
     <path d="m465.016 0h-344.456c-9.52 0-17.223 7.703-17.223 17.223v86.114h-86.114c-9.52 0-17.223 7.703-17.223 17.223v344.456c0 9.52 7.703 17.223 17.223 17.223h344.456c9.52 0 17.223-7.703 17.223-17.223v-86.114h86.114c9.52 0 17.223-7.703 17.223-17.223v-344.456c0-9.52-7.703-17.223-17.223-17.223zm-120.56 447.793h-310.01v-310.01h310.011v310.01zm103.337-103.337h-68.891v-223.896c0-9.52-7.703-17.223-17.223-17.223h-223.896v-68.891h310.011v310.01z"/>
+</svg>`;
+
+    const svgClipURLBtn = `<svg id="Capa_1" style="fill:%color;" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" height="24" width="24">
+    <g>
+        <path d="M17.4,11.6h17.3c0.9,0,1.6-0.7,1.6-1.6V6.8c0-2.6-2.1-4.8-4.7-4.8h-11c-2.6,0-4.7,2.2-4.7,4.8V10
+            C15.8,10.9,16.5,11.6,17.4,11.6z"/>
+        <path d="M43.3,6h-1.6c-0.5,0-0.8,0.3-0.8,0.8V10c0,3.5-2.8,6.4-6.3,6.4H17.4c-3.5,0-6.3-2.9-6.3-6.4V6.8
+            c0-0.5-0.3-0.8-0.8-0.8H8.7C6.1,6,4,8.2,4,10.8v34.4C4,47.8,6.1,50,8.7,50h34.6c2.6,0,4.7-2.2,4.7-4.8V10.8C48,8.2,45.9,6,43.3,6z"
+            />
+    </g>
 </svg>`;
 
     var preUrl = "";
@@ -146,7 +159,7 @@
 
     var checkExistTimer = setInterval(function () {
         const curUrl = window.location.href;
-        const savePostSelector = 'article *:not(li)>*>*>*>div:not([class])>div[role="button"]:not([style]):not([tabindex="-1"])';
+        const savePostSelector = 'section div[role="button"] svg[height="24"] path';
         const storySelector = 'section > *:not(main) header div>svg:not([aria-label=""])';
         const profileSelector = 'header section svg circle';
         const playSvgPathSelector = 'path[d="M5.888 22.5a3.46 3.46 0 0 1-1.721-.46l-.003-.002a3.451 3.451 0 0 1-1.72-2.982V4.943a3.445 3.445 0 0 1 5.163-2.987l12.226 7.059a3.444 3.444 0 0 1-.001 5.967l-12.22 7.056a3.462 3.462 0 0 1-1.724.462Z"]';
@@ -165,7 +178,7 @@
         // check post
         let articleList = document.querySelectorAll('article');
         for (let i = 0; i < articleList.length; i++) {
-            let buttonAnchor = (Array.from(articleList[i].querySelectorAll(savePostSelector))).pop();
+            let buttonAnchor = articleList[i].querySelector(savePostSelector);
             if (buttonAnchor && articleList[i].getElementsByClassName('custom-btn').length === 0) {
                 addCustomBtn(buttonAnchor, iconColor, append2Post);
             }
@@ -201,11 +214,12 @@
     }, 500);
 
     function append2Post(node, btn) {
-        node.append(btn);
+        const section = node.closest('section');
+        (Array.from(section.querySelectorAll(':scope > div > div')).pop() ?? section).append(btn);
     }
 
     function append2IndependentPost(node, btn) {
-        node.parentNode.parentNode.append(btn);
+        node.closest('section').querySelector('div').append(btn);
     }
 
     function append2Header(node, btn) {
@@ -220,15 +234,19 @@
         // add download button and set event handlers
         // add newtab button
         let newtabBtn = createCustomBtn(svgNewtabBtn, iconColor, 'newtab-btn', '16px');
-        appendNode(node, newtabBtn);
+        if (enableNewtabBtn) appendNode(node, newtabBtn);
 
         // add download button
         let downloadBtn = createCustomBtn(svgDownloadBtn, iconColor, 'download-btn', '14px');
-        appendNode(node, downloadBtn);
+        if (enableDownloadBtn) appendNode(node, downloadBtn);
+
+        let clipURLBtn = createCustomBtn(svgClipURLBtn, iconColor, 'clipurl-btn', '14px');
+        if (enableClipURLBtn) appendNode(node, clipURLBtn);
 
         if (prefetchAndAttachLink) {
             onMouseInHandler({ currentTarget: newtabBtn });
             onMouseInHandler({ currentTarget: downloadBtn });
+            onMouseInHandler({ currentTarget: clipURLBtn });
         }
     }
 
@@ -242,6 +260,8 @@
         if (hoverToFetchAndAttachLink) newBtn.onmouseenter = onMouseInHandler;
         if (className.includes('newtab')) {
             newBtn.setAttribute('title', 'Open in new tab');
+        } else if (className.includes('clipurl')) {
+            newBtn.setAttribute('title', 'Copy URL');
         } else {
             newBtn.setAttribute('title', 'Download');
         }
@@ -288,10 +308,15 @@
 
         if (url.length > 0) {
             // check url
-            if (target.getAttribute('class').includes('download-btn')) {
+            const classList = target.getAttribute('class');
+            if (['download-btn', 'clipurl-btn'].some(c => classList.includes(c))) {
                 // generate filename
                 const filename = document.querySelector('header h2').textContent;
-                downloadResource(url, filename);
+                if (classList.includes('download-btn')) {
+                    downloadResource(url, filename);
+                } else {
+                    clipURLResource(url, filename);
+                }
             } else {
                 // open url in new tab
                 openResource(url);
@@ -323,7 +348,8 @@
             // download or open media url
             if (url.length > 0) {
                 // check url
-                if (target.getAttribute('class').includes('download-btn')) {
+                const classList = target.getAttribute('class');
+                if (['download-btn', 'clipurl-btn'].some(c => classList.includes(c))) {
                     let mediaName = url
                         .split('?')[0]
                         .split('\\')
@@ -332,11 +358,15 @@
                         .pop();
                     mediaName = mediaName.substring(0, mediaName.lastIndexOf('.'));
                     let datetime = new Date(articleNode.querySelector('time').getAttribute('datetime'));
-                    let posterName = articleNode.querySelector('header a') || findPostName(articleNode);
+                    let posterName = articleNode.querySelector('a[href^="/"][href$="/"]') || findPostName(articleNode);
                     posterName = posterName.getAttribute('href').replace(/\//g, '');
                     let postId = findPostId(articleNode);
                     let filename = filenameFormat(postFilenameTemplate, posterName, datetime, mediaName, postId, mediaIndex);
-                    downloadResource(url, filename);
+                    if (classList.includes('download-btn')) {
+                        downloadResource(url, filename);
+                    } else {
+                        clipURLResource(url, filename);
+                    }
                 } else {
                     // open url in new tab
                     openResource(url);
@@ -560,7 +590,7 @@
     }
 
     function findPostName(articleNode) {
-        // this grabs the username link that is visually in the author's post comment below the media 
+        // this grabs the username link that is visually in the author's post comment below the media
         // 'article section' includes the likes section and comment box
         // '+ * a' pulls the first element after the section that contains a link (comment box doesn't)
         // '[href^="/"][href$="/"]' requires the href attribute to begin and end with a slash to match a username
@@ -633,13 +663,14 @@
         let url = await storyGetUrl(target, sectionNode);
         const posterUrlPat = /\/stories\/(.*)\/.*\//
         // download or open media url
-        if (target.getAttribute('class').includes('download-btn')) {
+        const classList = target.getAttribute('class');
+        if (['download-btn', 'clipurl-btn'].some(c => classList.includes(c))) {
             let mediaName = url.split('?')[0].split('\\').pop().split('/').pop();
             mediaName = mediaName.substring(0, mediaName.lastIndexOf('.'));
             let datetime = new Date(sectionNode.querySelector('time').getAttribute('datetime'));
             let posterName = "unkown";
             // method 1
-            const posterNameHeader = sectionNode.querySelector('header a');
+            const posterNameHeader = sectionNode.querySelector('a[href^="/"][href$="/"]');
             if (posterNameHeader) {
                 posterName = posterNameHeader.getAttribute('href').replace(/\//g, '');
             }
@@ -652,7 +683,11 @@
                 }
             }
             let filename = filenameFormat(storyFilenameTemplate, posterName, datetime, mediaName);
-            downloadResource(url, filename);
+            if (classList.includes('download-btn')) {
+                downloadResource(url, filename);
+            } else {
+                clipURLResource(url, filename);
+            }
         } else {
             // open url in new tab
             openResource(url);
@@ -744,7 +779,7 @@
             forceDownload(url, filename, 'mp4');
             return;
         }
-        console.log(`Dowloading ${url}`);
+        console.log(`[Instagram Download Button] downloadResource() ${url} ${filename}`);
         // ref: https://stackoverflow.com/questions/49474775/chrome-65-blocks-cross-origin-a-download-client-side-workaround-to-force-down
         if (!filename) {
             filename = url
@@ -755,17 +790,29 @@
         }
         fetch(url, {
             headers: new Headers({
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 105.0.0.11.118 (iPhone11,8; iOS 12_3_1; en_US; en-US; scale=2.00; 828x1792; 165586599)', //window.navigator.userAgent,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 105.0.0.11.118 (iPhone11,8; iOS 12_3_1; en_US; en-US; scale=2.00; 828x1792; 165586599)', //window.navigator.userAgent,
                 Origin: location.origin,
             }),
             mode: 'cors',
         })
             .then(response => response.blob())
             .then(blob => {
-                const extension = blob.type.split('/').pop();
-                let blobUrl = window.URL.createObjectURL(blob);
-                forceDownload(blobUrl, filename, extension);
-            })
+            const extension = blob.type.split('/').pop();
+            let blobUrl = window.URL.createObjectURL(blob);
+            forceDownload(blobUrl, filename, extension);
+        })
             .catch(e => console.error(e));
+    }
+
+    function clipURLResource(url, filename) {
+        if (!filename && !url.startsWith('blob:')) {
+            filename = url
+                .split('\\')
+                .pop()
+                .split('/')
+                .pop();
+        }
+        console.log(`[Instagram Download Button] clipURLResource() ${url} ${filename}`);
+        GM_setClipboard(url + `&filename=${filename}`)
     }
 })();
